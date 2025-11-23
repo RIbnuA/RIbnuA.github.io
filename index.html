@@ -1,17 +1,142 @@
 <!DOCTYPE html>
-<html>
-<title>TES DOANG</title>
-<head></head>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Lampu Kamar - Revisi Final</title>
+<style>
+body { font-family: Arial; background:#f0f2f5; display:flex; justify-content:center; align-items:center; height:100vh; }
+.card { background:#fff; padding:24px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.1); width:320px; text-align:center; }
+input[type="password"] { width:100%; padding:10px; margin:12px 0 16px; border-radius:8px; border:1px solid #ccc; }
+button { width:100%; padding:12px; border-radius:8px; border:none; background:#0f62fe; color:#fff; font-size:16px; cursor:pointer; }
+button:hover { background:#0353e9; }
+.switch { position:relative; display:inline-block; width:70px; height:36px; margin-top:20px; }
+.switch input { display:none; }
+.slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#ccc; transition:.4s; border-radius:36px; }
+.slider:before { position:absolute; content:""; height:28px; width:28px; left:4px; bottom:4px; background:white; border-radius:50%; transition:.4s; }
+input:checked + .slider { background:#4cd964; }
+input:checked + .slider:before { transform:translateX(34px); }
+.status { margin-top:14px; font-size:14px; color:#555; }
+.status.ok { color:#059669; }
+.status.err { color:#dc2626; }
+.hidden { display:none; }
+</style>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
 <body>
-<h1>Hello, World!</h1>
+
+<div class="card" id="loginCard">
+  <h2>Login MQTT</h2>
+  <input type="password" id="mqttPass" placeholder="Masukkan password MQTT">
+  <button id="btnLogin">Login</button>
+  <p id="loginMsg" class="status"></p>
+</div>
+
+<div class="card hidden" id="controlCard">
+  <h2>Lampu Kamar</h2>
+  <label class="switch">
+    <input type="checkbox" id="lampSwitch">
+    <span class="slider"></span>
+  </label>
+  <p id="mqttStatus" class="status">Belum terhubung ke broker</p>
+  <p id="actionMsg" class="status"></p>
+</div>
+
+<script>
+const brokerURL = "wss://broker.avisha.id:8084/mqtt"; // sesuaikan broker
+const mqttUsername = "mqtt_RandyIbnu"; // username hardcode
+const topicSet = "mqtt_RandyIbnu/tess";
+const topicStatus = "mqtt_RandyIbnu/test";
+
+const loginCard = document.getElementById("loginCard");
+const controlCard = document.getElementById("controlCard");
+const btnLogin = document.getElementById("btnLogin");
+const mqttPassInput = document.getElementById("mqttPass");
+const loginMsg = document.getElementById("loginMsg");
+
+const lampSwitch = document.getElementById("lampSwitch");
+const mqttStatus = document.getElementById("mqttStatus");
+const actionMsg = document.getElementById("actionMsg");
+
+let client = null;
+
+// LOGIN BUTTON
+btnLogin.addEventListener("click", function(){
+  const mqttPass = mqttPassInput.value.trim(); // ambil password dari input
+  if(!mqttPass){
+    loginMsg.innerText = "Masukkan password MQTT!";
+    loginMsg.className = "status err";
+    return;
+  }
+
+  loginMsg.innerText = "Menghubungkan...";
+  loginMsg.className = "status";
+
+  connectMQTT(mqttUsername, mqttPass)
+    .then(() => {
+      loginCard.classList.add("hidden");
+      controlCard.classList.remove("hidden");
+      mqttStatus.innerText = "Connected to MQTT ✔";
+      mqttStatus.className = "status ok";
+    })
+    .catch(err => {
+      loginMsg.innerText = "Gagal koneksi: " + err;
+      loginMsg.className = "status err";
+    });
+});
+
+// CONNECT MQTT
+function connectMQTT(username, password){
+  return new Promise((resolve,reject)=>{
+    if(client) try{ client.end(true); } catch(e){}
+
+    client = mqtt.connect(brokerURL, {
+      username: username,
+      password: password,
+      keepalive: 30,
+      reconnectPeriod: 2000,
+      connectTimeout: 10000
+    });
+
+    client.on("connect", () => {
+      client.subscribe(topicStatus, { qos:0 }, (err)=>{
+        if(err) actionMsg.innerText = "Subscribe error: "+err.message;
+        else actionMsg.innerText = "Subscribe OK";
+      });
+      resolve();
+    });
+
+    client.on("message", (topic,message)=>{
+      if(topic === topicStatus){
+        lampSwitch.checked = message.toString() === "ON";
+        actionMsg.innerText = "Status: " + message.toString();
+      }
+    });
+
+    client.on("error", err=>{
+      reject(err && err.message ? err.message : err);
+    });
+
+    client.on("close", ()=>{
+      mqttStatus.innerText = "Connection closed";
+      mqttStatus.className = "status";
+    });
+  });
+}
+
+// SWITCH HANDLER
+lampSwitch.addEventListener("change", ()=>{
+  if(!client || !client.connected){
+    actionMsg.innerText = "Belum terhubung broker!";
+    lampSwitch.checked = !lampSwitch.checked;
+    return;
+  }
+  const state = lampSwitch.checked ? "ON" : "OFF";
+  client.publish(topicSet, state, {qos:0}, (err)=>{
+    if(err) actionMsg.innerText = "Publish error: "+err.message;
+    else actionMsg.innerText = "Publish: "+state;
+  });
+});
+</script>
 </body>
-
-
-
-
-
-
-
-
-
 </html>
